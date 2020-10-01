@@ -138,8 +138,8 @@ def directio_accuracy(time_series, prediction):
         
 def directio_fc_val(time_series, prediction):
     da = directio_accuracy(time_series, prediction)
-    positives = [x for x in da if x==1]
-    negatives = [x for x in da if x==-1]
+    # positives = [x for x in da if x==1]
+    # negatives = [x for x in da if x==-1]
     # print("Number of 1s: {}\n Number of -1s: {}\n".format(len(positives), len(negatives)))
     # pdb.set_trace()
     return np.array([abs(x1 - x0)*v for x0, x1, v in zip(time_series,time_series[1:],da)])
@@ -160,22 +160,25 @@ def norm_directio_fc_val(time_series, prediction):
     return np.sum(dv)/sum(s_gen)
 
 def calculate_mmda(time_series, ps):
-    pdb.set_trace()
     return np.mean([mean_directio_acc(xs, p) for xs, p in zip(time_series,ps)])
 
 def calculate_mmdv(time_series, ps):
-    return np.mean([mean_directio_fc_val(time_series, p) for p in ps])
+    return np.mean([mean_directio_fc_val(xs, p) for xs, p in zip(time_series,ps)])
 
 def calculate_nmdv(time_series, ps):
-    return np.mean([norm_directio_fc_val(time_series, p) for p in ps])
+    return np.mean([norm_directio_fc_val(xs, p) for xs, p in zip(time_series,ps)])
     
 def mmda_score(ts, window_cols, fam):
     xs, ps = cross_validation(ts, window_cols, fam)
     return calculate_mmda(xs, ps)
 
 def mmdv_score(ts, window_cols, fam):
-    ps = prediction(ts, window_cols, fam)
-    return calculate_mmdv(ts, ps)
+    xs, ps = cross_validation(ts, window_cols, fam)
+    return calculate_mmdv(xs, ps)
+
+def nmdv_score(ts, window_cols, fam):
+    xs, ps = cross_validation(ts, window_cols, fam)
+    return calculate_nmdv(xs, ps)
 
 def q_mda_score(ts, window_cols, fam):
     p = one_step_prediction(ts, window_cols, fam)
@@ -185,9 +188,6 @@ def q_mda_tuned(ts, window_cols, fam):
     score = q_mda_score(ts, window_cols, fam)
     return math.tan(0.5*math.pi*score)
 
-def nmdv_score(ts, window_cols, fam):
-    ps = prediction(ts, window_cols, fam)
-    return calculate_nmdv(ts, ps)
 
 def nmdv_tuned(ts, window_cols, fam):
     score = nmdv_score(ts, window_cols, fam)
