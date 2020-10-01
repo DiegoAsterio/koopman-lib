@@ -78,12 +78,6 @@ def exp_growth(b, mu):
 
 # koopman functs.
 
-# def koopman_operator(time_series, gs):
-#     Y = np.array([[g(x) for x in time_series] for g in gs])
-#     Y0 = Y[:,:-1]
-#     Y1 = Y[:,1:]
-#     return Y1 @ np.linalg.pinv(Y0)
-
 def koopman_op(Y):
     Y0 = Y[:,:-1]
     Y1 = Y[:,1:]
@@ -154,6 +148,10 @@ def q_mda_score(ts, window_cols, fam):
     p = one_step_prediction(ts, fam, window_cols)
     return mean_directio_acc(ts, p)
 
+def q_mda_tuned(ts, window_cols, fam):
+    score = q_mda_score(ts, window_cols, fam)
+    return math.tan(0.5*math.pi*score)
+
 def nmdv_score(ts, window_cols, fam):
     ps = prediction(ts, fam, window_cols)
     return calculate_nmdv(ts, ps)
@@ -171,6 +169,7 @@ def estimate_gradient(funct, point, eps):
     for i in range(n):
         delta = np.copy(point)
         delta[i] += eps
+        pdb.set_trace()
         tvm = (funct(point) - funct(delta))/eps
         gradient.append(tvm)
     return np.array(gradient)
@@ -190,9 +189,7 @@ def objective(ts, window_cols, fam, param):
 
 def q_objective(ts, window_cols, fam, param):
     fam_instance = fam(*param)
-    p = one_step_prediction(ts, fam_instance, window_cols)
-    print(p[30:35], "\n")
-    return mean_directio_acc(ts, p)
+    return q_mda_score(ts, window_cols, fam_instance)
 
 def gradient_descent(objective, num_param, lr=0.1, eps=2.5):
     max_iter = 1000
@@ -203,6 +200,7 @@ def gradient_descent(objective, num_param, lr=0.1, eps=2.5):
         objs.append(objective(x1))
         g0, g1 = g1, estimate_gradient(objective, x1, eps)
         x0, x1 = x1, x1 - lr * g1
+        pdb.set_trace()
         if np.linalg.norm(x0-x1,ord=2) < 0.0001:
             return objs, objective(x1)
         lr = calc_learning_rate(x0, x1, g0, g1)
