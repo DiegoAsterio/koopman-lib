@@ -115,8 +115,9 @@ def cross_validation(xs, ds, gs, p=0.6):
         train, test = window[:index], window[index:]
         Y = np.array([[g(x) for x in train] for g in gs])
         K = koopman_op(Y)
-        temp_series.append([x for x in test[1:]]+[x for x in xs[:1]])
-        pred.append([apply_koopman_particular_case(K, gs, x) for x in test])
+        temp_series.append([x for x in test]+[x for x in xs[:1]])
+        single_p = [apply_koopman_particular_case(K, gs, x) for x in test]
+        pred.append(single_p)
     return temp_series, pred
 
 def one_step_prediction(xs, ds, gs):
@@ -133,20 +134,24 @@ def one_step_prediction(xs, ds, gs):
         
 # estimation
 
+def dai(x0,x1,xx1):
+    if (xx1-x0)*(x1-x0) > 0:
+        return 1
+    elif (xx1-x0)*(x1-x0) < 0:
+        return -1
+    elif (xx1-x0)==(x1-x0):
+        return 1
+    else:
+        return -1
+
 def directio_accuracy(time_series, prediction):
-    return np.array([ 1 if (xx1-x0)*(x1-x0) > 0 else -1 for x0, x1, xx1 in zip(time_series, time_series[1:],prediction)])
+    return np.array([ dai(x0,x1,xx1) for x0, x1, xx1 in zip(time_series, time_series[1:],prediction)])
         
 def directio_fc_val(time_series, prediction):
     da = directio_accuracy(time_series, prediction)
-    # positives = [x for x in da if x==1]
-    # negatives = [x for x in da if x==-1]
-    # print("Number of 1s: {}\n Number of -1s: {}\n".format(len(positives), len(negatives)))
-    # pdb.set_trace()
     return np.array([abs(x1 - x0)*v for x0, x1, v in zip(time_series,time_series[1:],da)])
 
 def mean_directio_acc(time_series, prediction):
-    # print("REAL TIME SERIES [31:35]:", time_series[31:36])
-    # print("PREDICTED TIME SERIES [31:35]:", prediction[30:35])
     da = directio_accuracy(time_series, prediction)
     return np.mean(da)
 
@@ -157,7 +162,7 @@ def mean_directio_fc_val(time_series, prediction):
 def norm_directio_fc_val(time_series, prediction):
     dv = directio_fc_val(time_series, prediction)
     s_gen = (abs(x1 - x0) for x0,x1 in zip(time_series, time_series[1:]))
-    return np.sum(dv)/sum(s_gen)
+    return (1+np.sum(dv))/(1+sum(s_gen))
 
 def calculate_mmda(time_series, ps):
     return np.mean([mean_directio_acc(xs, p) for xs, p in zip(time_series,ps)])
@@ -188,7 +193,6 @@ def q_mda_tuned(ts, window_cols, fam):
     score = q_mda_score(ts, window_cols, fam)
     return math.tan(0.5*math.pi*score)
 
-
 def nmdv_tuned(ts, window_cols, fam):
     score = nmdv_score(ts, window_cols, fam)
     return math.tan(0.5*math.pi*score)
@@ -216,13 +220,13 @@ def calc_learning_rate(x0, x1, g0, g1):
 
 def objective(ts, window_cols, fam, param):
     fam_instance = fam(*param)
-    return nmdv_tuned(ts, window_cols, fam_instance)
+    return mmda_score(ts, window_cols, fam_instance)
 
 def q_objective(ts, window_cols, fam, param):
     fam_instance = fam(*param)
     return q_mda_score(ts, window_cols, fam_instance)
 
-def gradient_descent(objective, num_param, lr=0.1, eps=7.5):
+def gradient_descent(objective, num_param, lr=0.1, eps=2.5):
     max_iter = 8000
     x1 = 30 * np.random.random(num_param)
     g1 = np.zeros(num_param)
@@ -231,10 +235,10 @@ def gradient_descent(objective, num_param, lr=0.1, eps=7.5):
         objs.append(objective(x1))
         g0, g1 = g1, estimate_gradient(objective, x1, eps)
         x0, x1 = x1, x1 - lr * g1
-        # pdb.set_trace()
         if np.linalg.norm(x0-x1,ord=2) < 0.0001:
             return objs, objective(x1), x1
-        lr = calc_learning_rate(x0, x1, g0, g1)
+        if np.linalg.norm(g0-g1,ord=2) >= 0.0001:
+            lr = calc_learning_rate(x0, x1, g0, g1)
     print("Did all iterations!\n")
     return objs, objective(x1), x1
 
@@ -244,7 +248,7 @@ def ann_objective(ts, window_cols, param):
     n = len(param)
     degs = [i for x, i in zip(param, range(n)) if x]
     fam_instance = polys(degs)
-    return q_mda_score(ts, window_cols, fam_instance)
+    return mmda_score(ts, window_cols, fam_instance)
 
 def prob(e0, e1, t):
     if e1 > e0:
@@ -267,8 +271,8 @@ def sim_ann(objective, num_param):
     p = [False for _ in range(num_param)]
     e = objective(p)
     max_iter = 10000
-    t0 = 100000
-    t1 = 99000
+    t0 = 10000
+    t1 = 9900
     objs, temps = [e], [t0]
     for k in range(max_iter):
         t = temperature(t0, t1, k)
@@ -289,56 +293,47 @@ if __name__ == "__main__":
     time_series = get_time_series(data, time_var, all_rows, time_step)
     step = 24
 
-    # print("Linear dictionary\n")
+    print("Harmonic dictionary\n")
 
-    # gs = linear_growth(7.0)
-    # score = q_mda_score(time_series, step, gs)
-    # print("Score for linear dictionary with lambda 7 MDA=%f\n" % score)
-
-    # f = lambda x : - q_objective(time_series, step, linear_growth, x)
-    # score_list, g_score, params = gradient_descent(f, 1)
-    # gs = linear_growth(params[0])
-    # print("Score after gradient ascent with lambda {} : {}\n".format(params[0], g_score))
+    N = 8
+    T = 100
+    gs = harmonics(N, T)
+    score = mmda_score(time_series, step, gs)
     
-    # # print("Trigonometric dictionary\n")
+    print("Objective function for harmonic dictionary of 2*{} elements over the period {}:\n MDA:{}".format(int(N), T, score))
 
-    # # gs = four_trig(1.0, 5.0, 8.0, 2.0, 1.0, 5.0, 7.0, 5.0, 6.0)
-    # # score = q_mda_score(time_series, step, gs)
-    # # print("Original score: %f\n" % score)
+    f = lambda x: -objective(time_series, step, harmonics, x)
+    score_list, g_score, params = gradient_descent(f, 2)
+
+    print("Score after gradient ascent with 2*{} elements and period {}:\n MDA:{}\n".format(*params, -g_score))
+
+    ts = range(len(score_list))
+    ys = [-y for y in score_list]
+
+    fig, ax = plt.subplots()
+    ax.plot(ts, ys, label="MMDA")
+    # ax.plot(temps, label="temperature")
+    plt.title("Gradient ascent")
+    plt.legend()
+    plt.show()
+
     
-    # # f = lambda x : -q_objective(time_series, step, four_trig, x)
-    
-    # # score_list, g_score = gradient_descent(f, 9)
-    # # print("Score after gradient_ascent: %f\n" % g_score)
+    print("Polynomial dictionary\n")
 
-    # N = 8
-    # T = 100
-    # gs = harmonics(N, T)
-    # score = q_mda_score(time_series, step, gs)
-    
-    # print("Objective function for harmonic dictionary of 2*{} elements over the period {}:\n MDA:{}".format(int(N), T, score))
+    gs = four_polys(1.0, 2.0, 4.0, 5.0)
+    score = mmda_score(time_series, step, gs)
+    print("Original score: %f\n" % score)
 
-    # f = lambda x: -q_objective(time_series, step, harmonics, x)
-    # score_list, g_score, params = gradient_descent(f, 2)
+    f = lambda x : ann_objective(time_series, step, x)
+    score_list, temps, sa_score = sim_ann(f, 6)
+    print("Score after simulated annealing: %f\n" % sa_score)
 
-    # print("Score after gradient ascent with 2*{} elements and period {}:\n MDA:{}\n".format(*params, -g_score))
-          
-    # print("Polynomial dictionary\n")
-
-    # gs = four_polys(1.0, 2.0, 4.0, 5.0)
-    # mda_score = q_mda_score(time_series, step, gs)
-    # print("Original score: %f\n" % mda_score)
-
-    # f = lambda x : ann_objective(time_series, step, x)
-    # score_list, temps, sa_score = sim_ann(f, 6)
-    # print("Score after simulated annealing: %f\n" % sa_score)
-
-    # fig, ax = plt.subplots()
-    # ax.plot(score_list, label="MDA")
-    # # ax.plot(temps, label="temperature")
-    # plt.title("Simulated annealing")
-    # plt.legend()
-    # plt.show()
+    fig, ax = plt.subplots()
+    ax.plot(score_list, label="MDA")
+    # ax.plot(temps, label="temperature")
+    plt.title("Simulated annealing")
+    plt.legend()
+    plt.show()
 
     # Diccionarios originales del articulo
 
@@ -349,42 +344,40 @@ if __name__ == "__main__":
           lambda x : math.sin(2*x),
           lambda x : math.cos(2*x)]
 
-    D1_mmda = mmda_score(time_series, step, D1)
-    D1_mmdv = mmdv_score(time_series, step, D1)
-    D1_nmdv = nmdv_score(time_series, step, D1)
+    D2 = [lambda x : x,
+          lambda x : 1,
+          lambda x : x**2,
+          lambda x : x**3,
+          lambda x : x**4]
 
-    print("Score for original dictionary D1 with step {}\nMDA:{}\tMDV:{}\tMNDV:{}\n".format(step, D1_mmda, D1_mmdv, D1_nmdv))
+    D3 = [lambda x : x,
+          lambda x : 1,
+          lambda x : np.sin(x),
+          lambda x : np.cos(x)]
 
-    step = 48
 
-    D1_mmda = mmda_score(time_series, step, D1)
-    D1_mmdv = mmdv_score(time_series, step, D1)
-    D1_nmdv = nmdv_score(time_series, step, D1)
+    steps = [24,48]
 
-    print("Score for original dictionary D1 with step {}\nMDA:{}\tMDV:{}\tMNDV:{}\n".format(step, D1_mmda, D1_mmdv, D1_nmdv))
+    for s in steps:
+        for D,i in zip([D1, D2, D3], range(1,4)):
+            D_mmda = mmda_score(time_series, s, D)
+            D_mmdv = mmdv_score(time_series, s, D)
+            D_nmdv = nmdv_score(time_series, s, D)
+
+            print("Score for original dictionary D{} with step {}\nMDA:{}\tMDV:{}\tNMDV:{}\n".format(i, s, D_mmda, D_mmdv, D_nmdv))
+
+            xs, ps = cross_validation(time_series, s, D)
+
+            das = [1000*y for x, p in zip(xs,ps) for y in directio_accuracy(x, p)]
     
-    # D2 = [lambda x : x,
-    #       lambda x : 1,
-    #       lambda x : x**2,
-    #       lambda x : x**3,
-    #       lambda x : x**4]
+            xs = [y for x in xs for y in x[1:]]
+            ps = [y for p in ps for y in p]
+            ts = list(range(min(len(xs),len(ps))))
 
-    # D2_mmda = mmda_score(time_series, step, D2)
-    # D2_mmdv = mmdv_score(time_series, step, D2)
-    # D2_nmdv = nmdv_score(time_series, step, D2)
-
-    # print("Score for original dictionary D2 with step {}\nMDA:{}\tMDV:{}\tMNDV:{}\n".format(step, D2_mmda, D2_mmdv, D2_nmdv))
-    
-    # D3 = [lambda x : x,
-    #       lambda x : 1,
-    #       lambda x : np.sin(x),
-    #       lambda x : np.cos(x)]
-
-    # D3_mmda = mmda_score(time_series, step, D3)
-    # D3_mmdv = mmdv_score(time_series, step, D3)
-    # D3_nmdv = nmdv_score(time_series, step, D3)
-
-    # print("Score for original dictionary D3 with step {}\nMDA:{}\tMDV:{}\tMNDV:{}\n".format(step, D3_mmda, D3_mmdv, D3_nmdv))
-
-
-
+            fig, ax = plt.subplots()
+            ax.plot(ts, xs, label="time_series")
+            ax.plot(ts, ps, label="prediction")
+            ax.plot(ts, das, 'ro', label="DA(i)", linestyle='')
+            plt.title("Cross validation prediction")
+            plt.legend()
+            plt.show()
