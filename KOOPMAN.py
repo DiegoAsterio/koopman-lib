@@ -226,7 +226,7 @@ def q_objective(ts, window_cols, fam, param):
     fam_instance = fam(*param)
     return q_mda_score(ts, window_cols, fam_instance)
 
-def gradient_descent(objective, num_param, lr=0.1, eps=2.5):
+def gradient_descent(objective, num_param, lr=0.1, eps=7.0):
     max_iter = 8000
     x1 = 30 * np.random.random(num_param)
     g1 = np.zeros(num_param)
@@ -282,7 +282,7 @@ def sim_ann(objective, num_param):
             p = neigh
             e = e_neigh
         objs.append(e)
-    return objs, temps, objective(p)
+    return objs, temps, objective(p), p
 
 if __name__ == "__main__":
     data = get_data('Adware/')
@@ -325,7 +325,8 @@ if __name__ == "__main__":
     print("Original score: %f\n" % score)
 
     f = lambda x : ann_objective(time_series, step, x)
-    score_list, temps, sa_score = sim_ann(f, 6)
+    score_list, temps, sa_score, main_degs = sim_ann(f, 6)
+    print(main_degs)
     print("Score after simulated annealing: %f\n" % sa_score)
 
     fig, ax = plt.subplots()
