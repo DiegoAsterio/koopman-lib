@@ -287,10 +287,15 @@ def sim_ann(objective, num_param):
 if __name__ == "__main__":
     data = get_data('Adware/')
 
+    ransom_data = get_data('Ransomware/')
+    
     time_var=' Timestamp'
     all_rows = np.array([True for _ in range(len(data))])
     time_step = '10Min'
     time_series = get_time_series(data, time_var, all_rows, time_step)
+    ransom_all_rows = np.array([True for _ in range(len(ransom_data))])
+    ransom_time_step = '10Min'
+    random_time_series = get_time_series(ransom_data, time_var, ransom_all_rows, time_step)
     step = 24
 
     print("Harmonic dictionary\n")
